@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import shutil
+import sys
 import traceback
 from pathlib import Path
 
@@ -88,6 +89,22 @@ def find_brave_executable() -> Path | None:
     return None
 
 
+def resolve_browser_model(mission: dict, settings: dict) -> str:
+    """Keep the selected browser model compatible with the chosen provider."""
+    provider = str(mission.get("provider", "google"))
+    requested = str(mission.get("model", "")).strip()
+    if provider == "google" and requested and not requested.lower().startswith("gemini"):
+        return str(settings.get("google_model") or requested).strip()
+    if provider == "openai" and requested.lower().startswith("gemini"):
+        return str(settings.get("openai_model") or requested).strip()
+    return requested or str(settings.get(f"{provider}_model") or "").strip()
+
+
+def _mission_event(db: Database, mission_id: str, kind: str, detail: str) -> None:
+    db.add_event(mission_id, kind, detail)
+    print(f"TARS_PROGRESS={kind}:{detail}", flush=True)
+
+
 async def run_browser(mission: dict, settings: dict, api_key: str) -> dict:
     if not settings.get("browser_enabled", True):
         raise RuntimeError("el operador web está desactivado en Configuración")
@@ -102,16 +119,21 @@ async def run_browser(mission: dict, settings: dict, api_key: str) -> dict:
 
     Agent, ChatGoogle, ChatOpenAI, Tools = _browser_classes()
     BrowserProfile, BrowserSession = _browser_session_classes()
+    model = resolve_browser_model(mission, settings)
+    if not model:
+        raise RuntimeError("no hay un modelo compatible configurado para CASE")
     if mission["provider"] == "google":
-        llm = ChatGoogle(model=mission["model"], api_key=api_key, temperature=0.1, max_retries=3)
+        llm = ChatGoogle(model=model, api_key=api_key, temperature=0.0, max_retries=1)
     else:
-        llm = ChatOpenAI(model=mission["model"], api_key=api_key, temperature=0.1, max_retries=3)
+        llm = ChatOpenAI(model=model, api_key=api_key, temperature=0.0, max_retries=1)
 
     task = f"""MISIÓN DEL USUARIO:
 {mission['description']}
 
 {browser_guardrails(mission['risk'])}
 Usá exclusivamente Brave Browser. No abras Google Chrome ni el Chromium incluido con Playwright.
+Podés hacer clic, escribir búsquedas y usar filtros para cumplir la misión. No confirmes envíos ni acciones sensibles sin autorización.
+Si una página no responde, probá una alternativa razonable y reportá el bloqueo con precisión.
 Al finalizar, resumí exactamente qué hiciste, qué páginas visitaste y qué quedó pendiente.
 """
     tools = Tools(exclude_actions=excluded_browser_actions(mission["risk"]))
@@ -121,12 +143,42 @@ Al finalizar, resumí exactamente qué hiciste, qué páginas visitaste y qué q
             executable_path=str(brave_path),
             headless=False,
             allowed_domains=allowed,
-            user_data_dir=str(ROOT / "data" / "brave-profile"),
+            user_data_dir=None,
             keep_alive=False,
+            enable_default_extensions=False,
+            args=["--no-first-run", "--no-default-browser-check", "--disable-brave-update"],
         )
         browser_session = BrowserSession(browser_profile=browser_profile)
     except Exception as exc:
         raise RuntimeError(f"no se pudo preparar Brave para CASE: {exc}") from exc
+
+    db = Database()
+    mission_id = str(mission.get("id") or "")
+    step_number = 0
+
+    async def on_step_start(agent):
+        nonlocal step_number
+        step_number += 1
+        if mission_id and step_number == 1:
+            _mission_event(db, mission_id, "browser_ready", "Brave listo; CASE comienza la misión")
+        url = "pantalla actual"
+        try:
+            url = await asyncio.wait_for(agent.browser_session.get_current_page_url(), timeout=3)
+        except Exception:
+            pass
+        if mission_id:
+            _mission_event(db, mission_id, "progress", f"Paso {step_number}: analizando {url}")
+
+    async def on_step_end(agent):
+        action = "acción completada"
+        try:
+            actions = agent.history.action_names()
+            if actions:
+                action = str(actions[-1])
+        except Exception:
+            pass
+        if mission_id:
+            _mission_event(db, mission_id, "progress", f"Paso {step_number}: {action}")
 
     agent = Agent(
         task=task,
@@ -134,13 +186,30 @@ Al finalizar, resumí exactamente qué hiciste, qué páginas visitaste y qué q
         llm=llm,
         browser_session=browser_session,
         use_vision=True,
-        max_actions_per_step=3,
-        max_failures=3,
-        calculate_cost=True,
+        vision_detail_level="low",
+        llm_screenshot_size=(1280, 720),
+        flash_mode=True,
+        use_thinking=False,
+        use_judge=False,
+        enable_planning=False,
+        final_response_after_failure=False,
+        directly_open_url=True,
+        max_history_items=6,
+        max_actions_per_step=5,
+        max_failures=2,
+        llm_timeout=45,
+        step_timeout=60,
+        calculate_cost=False,
         extend_system_message=browser_guardrails(mission["risk"]),
     )
     try:
-        history = await agent.run(max_steps=int(settings.get("browser_max_steps", 18)))
+        if mission_id:
+            _mission_event(db, mission_id, "browser_launch", f"Abriendo Brave con {model}")
+        history = await agent.run(
+            max_steps=int(settings.get("browser_max_steps", 18)),
+            on_step_start=on_step_start,
+            on_step_end=on_step_end,
+        )
         final = history.final_result() or "La misión terminó sin texto final."
         return {
             "text": str(final),
@@ -150,6 +219,7 @@ Al finalizar, resumí exactamente qué hiciste, qué páginas visitaste y qué q
             "errors": [x for x in history.errors() if x],
             "duration_seconds": history.total_duration_seconds(),
             "browser": "Brave",
+            "model": model,
         }
     finally:
         try:
