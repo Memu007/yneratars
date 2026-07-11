@@ -272,14 +272,17 @@
           </section>
 
           <section class="settings-card panel-surface">
-            <div class="settings-card-head"><div class="settings-icon">VO</div><div><h3>Voz y conversación</h3><p>Entrada por micrófono y salida con voces instaladas.</p></div></div>
+            <div class="settings-card-head"><div class="settings-icon">VO</div><div><h3>Voz y conversación</h3><p>Micrófono compatible con Brave, voz natural e interrupciones.</p></div></div>
             <div class="settings-grid">
-              <label>Voz<select id="voiceSelect"><option>Voz predeterminada</option></select></label>
-              <label>Velocidad<div class="range-field"><input id="voiceRate" type="range" min="0.7" max="1.4" step="0.05" value="0.95"><output id="voiceRateValue">0.95×</output></div></label>
+              <label>Motor de voz<select id="voiceMode"><option value="realtime">Natural · Realtime</option><option value="local">Local · navegador/macOS</option></select></label>
+              <label>Voz natural<select id="realtimeVoice"><option value="marin">Marin · natural</option><option value="cedar">Cedar · cálida</option><option value="coral">Coral · clara</option><option value="verse">Verse · firme</option></select></label>
+              <label>Voz local<select id="voiceSelect"><option>Voz predeterminada</option></select></label>
+              <label>Velocidad local<div class="range-field"><input id="voiceRate" type="range" min="0.7" max="1.4" step="0.05" value="0.95"><output id="voiceRateValue">0.95×</output></div></label>
               <label class="switch-line"><span>Leer respuestas</span><input id="autoSpeak" type="checkbox" checked><i></i></label>
-              <label class="switch-line"><span>Enviar al terminar de hablar</span><input id="handsFree" type="checkbox"><i></i></label>
+              <label class="switch-line"><span>Modo manos libres continuo</span><input id="handsFree" type="checkbox"><i></i></label>
             </div>
-            <button id="testVoice" class="button" type="button">Probar voz</button>
+            <div class="settings-actions"><button id="testVoice" class="button" type="button">Probar voz</button><span id="voiceEngineStatus" class="inline-status">Inicializando micrófono…</span></div>
+            <div class="security-note"><strong>Voz natural</strong><span>Realtime y TTS natural usan la clave de OpenAI guardada en tu Mac. Sin ella, TARS usa grabación por turnos y la voz local.</span></div>
           </section>
 
           <section class="settings-card panel-surface">
@@ -338,5 +341,6 @@
   </template>
 
   <script src="/static/app.js" defer></script>
+  <script src="/static/voice.js" defer></script>
 </body>
 </html>

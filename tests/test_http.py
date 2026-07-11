@@ -57,6 +57,23 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(status, expected, body)
         return json.loads(body) if body else {}
 
+
+    def raw_request(self, path, data, content_type, expected=200, extra_headers=None):
+        headers = {"Content-Type": content_type, "X-TARS-Client": "dashboard"}
+        headers.update(extra_headers or {})
+        req = Request(self.base + path, data=data, method="POST", headers=headers)
+        try:
+            with urlopen(req, timeout=3) as response:
+                status = response.status
+                body = response.read()
+                response_type = response.headers.get("Content-Type", "")
+        except HTTPError as exc:
+            status = exc.code
+            body = exc.read()
+            response_type = exc.headers.get("Content-Type", "")
+        self.assertEqual(status, expected, body.decode("utf-8", errors="replace"))
+        return body, response_type
+
     def test_health_and_dashboard(self):
         self.assertTrue(self.request("/api/health")["ok"])
         with urlopen(self.base + "/", timeout=3) as response:
@@ -161,12 +178,72 @@ class HttpTests(unittest.TestCase):
     def test_static_js_contains_voice_and_stop(self):
         with urlopen(self.base + "/static/app.js", timeout=3) as response:
             js = response.read().decode()
-        self.assertIn("SpeechRecognition", js)
+        with urlopen(self.base + "/static/voice.js", timeout=3) as response:
+            voice_js = response.read().decode()
         self.assertIn("/api/stop-all", js)
         self.assertIn("tarsHandsFree", js)
-        self.assertIn("requestSubmit", js)
         self.assertIn("dispatchPrefixedMission", js)
-        self.assertIn("CASE|KIPP", js)
+        self.assertIn("navigator.mediaDevices.getUserMedia", voice_js)
+        self.assertIn("RTCPeerConnection", voice_js)
+        self.assertIn("/api/voice/realtime/session", voice_js)
+        self.assertNotIn("usá Chrome", js + voice_js)
+
+    def test_voice_ui_exposes_natural_and_hands_free_modes(self):
+        with urlopen(self.base + "/", timeout=3) as response:
+            html = response.read().decode()
+            self.assertEqual(response.headers.get("Permissions-Policy"), "microphone=(self)")
+        self.assertIn('id="voiceMode"', html)
+        self.assertIn('id="realtimeVoice"', html)
+        self.assertIn("Modo manos libres continuo", html)
+        self.assertIn('/static/voice.js', html)
+
+    def test_realtime_session_proxy_keeps_api_key_server_side(self):
+        self.app.secrets.set("openai", "12345678-openai-secret")
+        with patch("app.server.create_realtime_session", return_value="v=0\r\no=TARS") as mocked:
+            body, content_type = self.raw_request(
+                "/api/voice/realtime/session", b"v=0\r\no=browser", "application/sdp",
+                extra_headers={"X-TARS-Voice": "marin"},
+            )
+        self.assertEqual(body.decode(), "v=0\r\no=TARS")
+        self.assertIn("application/sdp", content_type)
+        self.assertEqual(mocked.call_args.args[0], "12345678-openai-secret")
+        self.assertNotIn(b"12345678-openai-secret", body)
+
+    def test_audio_transcription_uses_openai_when_available(self):
+        self.app.secrets.set("openai", "12345678-openai-secret")
+        with patch("app.server.transcribe_audio", return_value="hola TARS") as mocked:
+            body, _ = self.raw_request("/api/voice/transcribe", b"fake-audio", "audio/webm")
+        data = json.loads(body)
+        self.assertEqual(data["text"], "hola TARS")
+        self.assertEqual(data["engine"], "openai")
+        mocked.assert_called_once()
+
+    def test_audio_transcription_falls_back_to_google(self):
+        self.app.secrets.set("google", "12345678-google-secret")
+        with patch("app.server.transcribe_audio_google", return_value="hola por Gemini") as mocked:
+            body, _ = self.raw_request("/api/voice/transcribe", b"fake-audio", "audio/webm")
+        data = json.loads(body)
+        self.assertEqual(data["engine"], "google")
+        self.assertEqual(data["text"], "hola por Gemini")
+        self.assertEqual(mocked.call_args.args[3], "gemini-test")
+
+    def test_voice_messages_are_persisted_locally(self):
+        body = self.request("/api/voice/message", "POST", {
+            "conversation_id": "voice-conv", "role": "user", "content": "hola TARS",
+        })
+        self.assertTrue(body["ok"])
+        messages = self.app.db.messages("voice-conv")
+        self.assertEqual(messages[0]["content"], "hola TARS")
+        self.assertEqual(messages[0]["role"], "user")
+
+    def test_natural_tts_returns_audio_without_exposing_key(self):
+        self.app.secrets.set("openai", "12345678-openai-secret")
+        with patch("app.server.synthesize_speech", return_value=b"ID3-fake-mp3"):
+            body, content_type = self.raw_request(
+                "/api/voice/tts", json.dumps({"text": "hola", "voice": "marin"}).encode(), "application/json"
+            )
+        self.assertEqual(body, b"ID3-fake-mp3")
+        self.assertIn("audio/mpeg", content_type)
 
     def test_sensitive_models_get_requires_client_header(self):
         body = self.request("/api/providers/google/models", expected=403, client=False)

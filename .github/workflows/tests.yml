@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile Python
+        run: python -m compileall -q app tests
+      - name: Run unit and HTTP tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate JavaScript
+        run: |
+          node --check static/app.js
+          node --check static/voice.js
+      - name: Validate shell scripts
+        run: |
+          bash -n ABRIR_TARS.command
+          bash -n scripts/*.sh
+          bash -n scripts/*.command

@@ -21,6 +21,8 @@ from .executor import MissionExecutor
 from .providers import ProviderError, get_provider
 from .secrets_store import SecretStore
 from .worker import system_prompt
+from .voice import (MAX_AUDIO_BYTES, MAX_SDP_BYTES, VoiceError, create_realtime_session,
+                    synthesize_speech, transcribe_audio, transcribe_audio_google)
 
 STATIC_ROOT = ROOT / "static"
 
@@ -39,8 +41,9 @@ class TarsApplication:
     def close(self) -> None:
         self.executor.close()
 
-    def status(self) -> dict[str, Any]:
+    def status(self, secret_status: dict[str, object] | None = None) -> dict[str, Any]:
         cfg = self.settings.get()
+        secret_status = secret_status or self.secrets.status()
         ui_tars_paths = (
             Path("/Applications/UI TARS.app"),
             Path("/Applications/UI-TARS.app"),
@@ -57,17 +60,20 @@ class TarsApplication:
             "browser_use_installed": importlib.util.find_spec("browser_use") is not None,
             "ui_tars_installed": bool(shutil.which("ui-tars") or any(path.exists() for path in ui_tars_paths)),
             "native_voice_available": platform.system() == "Darwin" and shutil.which("say") is not None,
-            "key_storage": self.secrets.status()["storage"],
+            "realtime_voice_available": bool(secret_status.get("openai")),
+            "browser_microphone_supported": True,
+            "key_storage": secret_status["storage"],
             "provider": cfg["provider"],
             "executor": executor_status,
         }
 
     def dashboard(self) -> dict[str, Any]:
         missions = self.db.list_missions(limit=100)
+        secret_status = self.secrets.status()
         return {
-            "health": self.status(),
+            "health": self.status(secret_status),
             "settings": self.settings.get(),
-            "secrets": self.secrets.status(),
+            "secrets": secret_status,
             "stats": self.db.mission_stats(),
             "missions": missions,
             "activity": self.db.recent_events(limit=24),
@@ -124,9 +130,12 @@ def make_handler(app: TarsApplication):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Permissions-Policy", "microphone=(self)")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
+                "default-src 'self'; script-src 'self'; style-src 'self'; "
+                "connect-src 'self' https://api.openai.com wss://api.openai.com; "
+                "media-src 'self' blob:; img-src 'self' data:; frame-ancestors 'none'",
             )
 
         def _json(self, data: Any, status: int = 200) -> None:
@@ -138,6 +147,24 @@ def make_handler(app: TarsApplication):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _bytes(self, body: bytes, content_type: str, status: int = 200) -> None:
+            self.send_response(status)
+            self._security_headers()
+            self.send_header("Content-Type", content_type)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _read_body(self, max_bytes: int) -> bytes:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError as exc:
+                raise ValueError("Content-Length inválido") from exc
+            if length < 0 or length > max_bytes:
+                raise ValueError("payload demasiado grande")
+            return self.rfile.read(length) if length else b""
 
         def _file(self, path: Path) -> None:
             if not path.exists() or not path.is_file():
@@ -186,7 +213,8 @@ def make_handler(app: TarsApplication):
                 elif path == "/api/health":
                     self._json(app.status())
                 elif path == "/api/settings":
-                    self._json({"settings": app.settings.get(), "secrets": app.secrets.status(), "health": app.status()})
+                    secret_status = app.secrets.status()
+                    self._json({"settings": app.settings.get(), "secrets": secret_status, "health": app.status(secret_status)})
                 elif path == "/api/dashboard":
                     self._json(app.dashboard())
                 elif path == "/api/activity":
@@ -231,6 +259,38 @@ def make_handler(app: TarsApplication):
             try:
                 self._require_client_header()
                 path = urlparse(self.path).path
+                content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+
+                if path == "/api/voice/realtime/session":
+                    if content_type != "application/sdp":
+                        raise ValueError("Content-Type debe ser application/sdp")
+                    sdp = self._read_body(MAX_SDP_BYTES)
+                    key = app.secrets.get("openai")
+                    if not key:
+                        raise VoiceError("falta configurar una API key de OpenAI para voz Realtime")
+                    voice = self.headers.get("X-TARS-Voice", "marin")
+                    answer = create_realtime_session(key, sdp, app.settings.get(), voice)
+                    self._bytes(answer.encode("utf-8"), "application/sdp; charset=utf-8")
+                    return
+
+                if path == "/api/voice/transcribe":
+                    if not (content_type.startswith("audio/") or content_type == "application/octet-stream"):
+                        raise ValueError("Content-Type debe ser audio/*")
+                    audio = self._read_body(MAX_AUDIO_BYTES)
+                    openai_key = app.secrets.get("openai")
+                    google_key = app.secrets.get("google")
+                    if openai_key:
+                        text = transcribe_audio(openai_key, audio, content_type)
+                        engine = "openai"
+                    elif google_key:
+                        cfg = app.settings.get()
+                        text = transcribe_audio_google(google_key, audio, content_type, cfg.get("google_model", ""))
+                        engine = "google"
+                    else:
+                        raise VoiceError("configurá una API key de OpenAI o Google para transcribir")
+                    self._json({"text": text, "engine": engine})
+                    return
+
                 payload = self._read_json()
                 if path == "/api/settings":
                     self._json({"settings": app.settings.update(payload)})
@@ -239,6 +299,15 @@ def make_handler(app: TarsApplication):
                 if path == "/api/chat":
                     self._json(app.chat(payload))
                     return
+                if path == "/api/voice/message":
+                    conversation_id = str(payload.get("conversation_id") or "").strip()[:120]
+                    role = str(payload.get("role") or "").strip().lower()
+                    content = str(payload.get("content") or "").strip()[:20000]
+                    if not conversation_id or role not in {"user", "assistant"} or not content:
+                        raise ValueError("mensaje de voz inválido")
+                    app.db.add_message(conversation_id, role, content)
+                    self._json({"ok": True})
+                    return
                 if path == "/api/missions":
                     mission = app.db.create_mission(payload, app.settings.get())
                     app.executor.notify()
@@ -246,6 +315,15 @@ def make_handler(app: TarsApplication):
                     return
                 if path == "/api/stop-all":
                     self._json({"stopped": app.executor.stop_all()})
+                    return
+                if path == "/api/voice/tts":
+                    text = str(payload.get("text", "")).strip()
+                    voice = str(payload.get("voice", "marin")).strip()
+                    key = app.secrets.get("openai")
+                    if not key:
+                        raise VoiceError("falta configurar una API key de OpenAI para voz natural")
+                    audio = synthesize_speech(key, text, voice, app.settings.get())
+                    self._bytes(audio, "audio/mpeg")
                     return
                 if path == "/api/voice/say":
                     text = str(payload.get("text", "")).strip()[:4000]
@@ -304,7 +382,7 @@ def make_handler(app: TarsApplication):
                 self._json({"error": str(exc)}, 409)
             elif isinstance(exc, (ValueError, json.JSONDecodeError)):
                 self._json({"error": str(exc)}, 400)
-            elif isinstance(exc, ProviderError):
+            elif isinstance(exc, (ProviderError, VoiceError)):
                 self._json({"error": str(exc)}, 502)
             else:
                 self._json({"error": f"error interno: {exc}"}, 500)
