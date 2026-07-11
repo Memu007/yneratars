@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import sys
+import os
+import platform
+import shutil
 import traceback
 from pathlib import Path
 
@@ -40,10 +42,66 @@ def _browser_classes():
     return Agent, ChatGoogle, ChatOpenAI, Tools
 
 
+def _browser_session_classes():
+    try:
+        from browser_use.browser import BrowserProfile, BrowserSession
+    except ImportError as exc:
+        raise RuntimeError(
+            "La instalación de Browser Use está incompleta. Ejecutá scripts/setup_mac.command nuevamente."
+        ) from exc
+    return BrowserProfile, BrowserSession
+
+
+def brave_executable_candidates() -> list[Path]:
+    """Return Brave executable candidates without considering Chrome or Playwright Chromium."""
+    candidates: list[Path] = []
+    custom = os.getenv("TARS_BRAVE_PATH", "").strip()
+    if custom:
+        candidates.append(Path(custom).expanduser())
+
+    system = platform.system()
+    if system == "Darwin":
+        candidates.extend([
+            Path("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+            Path.home() / "Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        ])
+    elif system == "Windows":
+        for root_name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            system_root = os.getenv(root_name, "").strip()
+            if system_root:
+                candidates.append(Path(system_root) / "BraveSoftware/Brave-Browser/Application/brave.exe")
+    else:
+        for command in ("brave-browser", "brave-browser-stable", "brave"):
+            resolved = shutil.which(command)
+            if resolved:
+                candidates.append(Path(resolved))
+    return candidates
+
+
+def find_brave_executable() -> Path | None:
+    for candidate in brave_executable_candidates():
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return candidate.resolve()
+        except OSError:
+            continue
+    return None
+
+
 async def run_browser(mission: dict, settings: dict, api_key: str) -> dict:
     if not settings.get("browser_enabled", True):
         raise RuntimeError("el operador web está desactivado en Configuración")
+
+    brave_path = find_brave_executable()
+    if brave_path is None:
+        raise RuntimeError(
+            "Brave Browser no está instalado o no se encontró su ejecutable. "
+            "Instalalo con 'brew install --cask brave-browser' o definí TARS_BRAVE_PATH. "
+            "CASE no hará fallback a Chrome ni a Chromium."
+        )
+
     Agent, ChatGoogle, ChatOpenAI, Tools = _browser_classes()
+    BrowserProfile, BrowserSession = _browser_session_classes()
     if mission["provider"] == "google":
         llm = ChatGoogle(model=mission["model"], api_key=api_key, temperature=0.1, max_retries=3)
     else:
@@ -53,35 +111,34 @@ async def run_browser(mission: dict, settings: dict, api_key: str) -> dict:
 {mission['description']}
 
 {browser_guardrails(mission['risk'])}
+Usá exclusivamente Brave Browser. No abras Google Chrome ni el Chromium incluido con Playwright.
 Al finalizar, resumí exactamente qué hiciste, qué páginas visitaste y qué quedó pendiente.
 """
     tools = Tools(exclude_actions=excluded_browser_actions(mission["risk"]))
-    agent_kwargs = {
-        "task": task,
-        "tools": tools,
-        "llm": llm,
-        "use_vision": True,
-        "max_actions_per_step": 3,
-        "max_failures": 3,
-        "calculate_cost": True,
-        "extend_system_message": browser_guardrails(mission["risk"]),
-    }
-    browser_session = None
-    allowed = settings.get("allowed_domains") or []
-    if allowed:
-        try:
-            from browser_use.browser import BrowserProfile, BrowserSession
-            browser_session = BrowserSession(
-                browser_profile=BrowserProfile(
-                    allowed_domains=allowed,
-                    user_data_dir=str(ROOT / "data" / "browser-profile"),
-                )
-            )
-            agent_kwargs["browser_session"] = browser_session
-        except Exception as exc:
-            raise RuntimeError(f"no se pudo configurar la lista de dominios permitidos: {exc}") from exc
+    allowed = settings.get("allowed_domains") or None
+    try:
+        browser_profile = BrowserProfile(
+            executable_path=str(brave_path),
+            headless=False,
+            allowed_domains=allowed,
+            user_data_dir=str(ROOT / "data" / "brave-profile"),
+            keep_alive=False,
+        )
+        browser_session = BrowserSession(browser_profile=browser_profile)
+    except Exception as exc:
+        raise RuntimeError(f"no se pudo preparar Brave para CASE: {exc}") from exc
 
-    agent = Agent(**agent_kwargs)
+    agent = Agent(
+        task=task,
+        tools=tools,
+        llm=llm,
+        browser_session=browser_session,
+        use_vision=True,
+        max_actions_per_step=3,
+        max_failures=3,
+        calculate_cost=True,
+        extend_system_message=browser_guardrails(mission["risk"]),
+    )
     try:
         history = await agent.run(max_steps=int(settings.get("browser_max_steps", 18)))
         final = history.final_result() or "La misión terminó sin texto final."
@@ -92,13 +149,13 @@ Al finalizar, resumí exactamente qué hiciste, qué páginas visitaste y qué q
             "urls": history.urls(),
             "errors": [x for x in history.errors() if x],
             "duration_seconds": history.total_duration_seconds(),
+            "browser": "Brave",
         }
     finally:
-        if browser_session is not None:
-            try:
-                await browser_session.kill()
-            except Exception:
-                pass
+        try:
+            await browser_session.kill()
+        except Exception:
+            pass
 
 
 def execute(mission_id: str) -> dict:
