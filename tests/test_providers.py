@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.providers import GoogleProvider, OpenAIProvider, ProviderError
+from app.providers import CHAT_MAX_OUTPUT_TOKENS, CHAT_TIMEOUT_SECONDS, GoogleProvider, OpenAIProvider, ProviderError
 
 
 class ProviderTests(unittest.TestCase):
@@ -19,6 +19,10 @@ class ProviderTests(unittest.TestCase):
         result = GoogleProvider("12345678").generate("gemini-test", "hola", "sistema")
         self.assertEqual(result.text, "Hola\nmundo")
         self.assertEqual(result.usage["totalTokenCount"], 3)
+        kwargs = request.call_args.kwargs
+        self.assertEqual(kwargs["timeout"], CHAT_TIMEOUT_SECONDS)
+        self.assertEqual(kwargs["retries"], 1)
+        self.assertEqual(kwargs["payload"]["generationConfig"]["maxOutputTokens"], CHAT_MAX_OUTPUT_TOKENS)
 
     @patch("app.providers._request_json")
     def test_google_empty_response_rejected(self, request):
@@ -36,6 +40,10 @@ class ProviderTests(unittest.TestCase):
         request.return_value = {"output_text": "respuesta", "usage": {"total_tokens": 5}}
         result = OpenAIProvider("12345678").generate("gpt-test", "hola", "sistema")
         self.assertEqual(result.text, "respuesta")
+        kwargs = request.call_args.kwargs
+        self.assertEqual(kwargs["timeout"], CHAT_TIMEOUT_SECONDS)
+        self.assertEqual(kwargs["retries"], 1)
+        self.assertEqual(kwargs["payload"]["max_output_tokens"], CHAT_MAX_OUTPUT_TOKENS)
 
     @patch("app.providers._request_json")
     def test_openai_nested_output(self, request):

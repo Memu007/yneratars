@@ -102,10 +102,15 @@ def browser_guardrails(risk: str) -> str:
 
 
 def excluded_browser_actions(risk: str) -> list[str]:
-    """Hard-disable Browser Use actions beyond the mission's approved risk."""
-    always = {"evaluate", "write_file", "replace_file"}
+    """Disable destructive actions while preserving the interactions needed to browse.
+
+    A read-only web mission still needs click/input/select to follow links, search and
+    filter public pages. Submission safety is enforced by the risk prompt and human
+    approval; uploads, arbitrary JavaScript and filesystem writes remain hard-blocked.
+    """
+    blocked = {"evaluate", "write_file", "replace_file"}
     if risk == "low":
-        always.update({"click", "input", "upload_file", "send_keys", "select_dropdown"})
+        blocked.update({"upload_file", "send_keys"})
     elif risk == "medium":
-        always.update({"upload_file", "send_keys"})
-    return sorted(always)
+        blocked.add("upload_file")
+    return sorted(blocked)

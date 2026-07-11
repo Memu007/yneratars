@@ -11,22 +11,28 @@ if sys.version_info < (3, 11):
 print("Python:", sys.version.split()[0])
 PY
 
+BRAVE_APP="/Applications/Brave Browser.app"
+if [ ! -d "$BRAVE_APP" ] && [ ! -d "$HOME/Applications/Brave Browser.app" ]; then
+  if command -v brew >/dev/null 2>&1; then
+    echo "Brave Browser no está instalado. Instalándolo con Homebrew…"
+    brew install --cask brave-browser || {
+      echo "Aviso: no se pudo instalar Brave automáticamente."
+      echo "Instalalo manualmente desde brave.com o ejecutá: brew install --cask brave-browser"
+    }
+  else
+    echo "Aviso: Brave Browser no está instalado y Homebrew no está disponible."
+    echo "Instalá Brave manualmente antes de usar CASE. TARS no usará Chrome ni Chromium como fallback."
+  fi
+fi
+
 if [ ! -d .venv ]; then
   "$PYTHON_BIN" -m venv .venv
 fi
 .venv/bin/python -m pip install --upgrade pip setuptools wheel
 .venv/bin/pip install -e '.[browser]'
-.venv/bin/pip install uv
 
-if [ -x .venv/bin/browser-use ]; then
-  echo "Preparando Chromium para Browser Use…"
-  PATH="$PWD/.venv/bin:$PATH" .venv/bin/browser-use install || {
-    echo "Aviso: no se pudo instalar Chromium automáticamente."
-    echo "Reintentá luego con: PATH=\"$PWD/.venv/bin:$PATH\" .venv/bin/browser-use install"
-  }
-else
-  echo "Aviso: Browser Use no quedó instalado dentro del entorno virtual."
-fi
+echo "Browser Use configurado para usar el Brave instalado en macOS."
+echo "No se descargará Chromium mediante browser-use install."
 
 chmod +x scripts/*.command scripts/*.sh
 echo

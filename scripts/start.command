@@ -11,5 +11,7 @@ export SSL_CERT_FILE="${SSL_CERT_FILE:-$(.venv/bin/python -c 'import certifi; pr
 PID=$!
 trap 'kill $PID 2>/dev/null || true' EXIT INT TERM
 sleep 1
-open "http://127.0.0.1:${PORT}" || true
+open -a "Brave Browser" "http://127.0.0.1:${PORT}" || {
+  echo "No se pudo abrir Brave. Verificá que esté instalado; TARS no abrirá otro navegador automáticamente."
+}
 wait "$PID"

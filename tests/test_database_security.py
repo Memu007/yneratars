@@ -90,11 +90,13 @@ class DatabaseSecurityTests(unittest.TestCase):
     def test_risk_phrase(self):
         self.assertEqual(infer_risk("x", "subir archivo").risk, "high")
 
-    def test_low_risk_browser_actions_are_hard_limited(self):
+    def test_low_risk_browser_actions_allow_navigation_and_search(self):
         blocked = excluded_browser_actions("low")
-        self.assertIn("click", blocked)
-        self.assertIn("input", blocked)
+        self.assertNotIn("click", blocked)
+        self.assertNotIn("input", blocked)
+        self.assertNotIn("select_dropdown", blocked)
         self.assertIn("upload_file", blocked)
+        self.assertIn("send_keys", blocked)
         self.assertIn("evaluate", blocked)
 
     def test_high_risk_still_blocks_javascript_and_file_writes(self):

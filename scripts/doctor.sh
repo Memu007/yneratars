@@ -20,6 +20,11 @@ else
   FAIL=1
 fi
 if command -v security >/dev/null 2>&1; then echo "Keychain macOS: OK"; else echo "Keychain macOS: no disponible (se usará archivo 0600)"; fi
-if [ -d "/Applications/Google Chrome.app" ]; then echo "Google Chrome: OK"; else echo "Google Chrome: no detectado"; fi
+"$PYTEST" - <<'PY' || FAIL=1
+from app.worker import find_brave_executable
+path = find_brave_executable()
+print("Brave Browser:", str(path) if path else "NO DETECTADO")
+raise SystemExit(0 if path else 1)
+PY
 "$PYTEST" -m unittest discover -s tests -v || FAIL=1
 exit $FAIL

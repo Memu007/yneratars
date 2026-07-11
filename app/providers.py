@@ -21,6 +21,11 @@ class ProviderError(RuntimeError):
     pass
 
 
+CHAT_HISTORY_MESSAGES = max(2, int(os.getenv("TARS_CHAT_HISTORY_MESSAGES", "8")))
+CHAT_MAX_OUTPUT_TOKENS = max(256, int(os.getenv("TARS_CHAT_MAX_OUTPUT_TOKENS", "1400")))
+CHAT_TIMEOUT_SECONDS = max(10, int(os.getenv("TARS_CHAT_TIMEOUT_SECONDS", "45")))
+
+
 @dataclass
 class ProviderResponse:
     text: str
@@ -83,7 +88,7 @@ class GoogleProvider:
         if not model:
             raise ProviderError("falta el modelo de Gemini")
         contents: list[dict[str, Any]] = []
-        for msg in (history or [])[-12:]:
+        for msg in (history or [])[-CHAT_HISTORY_MESSAGES:]:
             role = "model" if msg.get("role") == "assistant" else "user"
             contents.append({"role": role, "parts": [{"text": str(msg.get("content", ""))}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
@@ -93,8 +98,8 @@ class GoogleProvider:
             payload={
                 "systemInstruction": {"parts": [{"text": system}]},
                 "contents": contents,
-                "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096},
-            }, timeout=90,
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": CHAT_MAX_OUTPUT_TOKENS},
+            }, timeout=CHAT_TIMEOUT_SECONDS, retries=1,
         )
         pieces: list[str] = []
         for candidate in data.get("candidates", []):
@@ -130,13 +135,13 @@ class OpenAIProvider:
         if not model:
             raise ProviderError("falta el modelo de OpenAI")
         transcript: list[dict[str, str]] = []
-        for msg in (history or [])[-12:]:
+        for msg in (history or [])[-CHAT_HISTORY_MESSAGES:]:
             transcript.append({"role": str(msg.get("role", "user")), "content": str(msg.get("content", ""))})
         transcript.append({"role": "user", "content": prompt})
         data = _request_json(
             "https://api.openai.com/v1/responses", method="POST", headers=self.headers,
-            payload={"model": model, "instructions": system, "input": transcript, "max_output_tokens": 4096},
-            timeout=90,
+            payload={"model": model, "instructions": system, "input": transcript, "max_output_tokens": CHAT_MAX_OUTPUT_TOKENS},
+            timeout=CHAT_TIMEOUT_SECONDS, retries=1,
         )
         text = str(data.get("output_text") or "").strip()
         if not text:
