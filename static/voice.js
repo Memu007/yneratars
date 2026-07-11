@@ -560,7 +560,15 @@
       speak('TARS operativo. Canal de voz listo. Si me interrumpís, me callo. Milagros de la ingeniería básica.');
     }, true);
 
+    const localSpeak = window.speak;
     window.tarsVoiceSpeak = naturalSpeak;
+    if (typeof localSpeak === 'function') {
+      window.speak = async (text) => {
+        if (await naturalSpeak(text)) return;
+        return localSpeak(text);
+      };
+    }
+    $('stopAll')?.addEventListener('click', () => window.tarsVoiceStop?.(), true);
     window.tarsVoiceResume = () => {
       if (handsFree() && !voiceState.realtimeConnected && !voiceState.connecting && voiceState.recorder?.state !== 'recording') {
         setTimeout(() => startRecorder(true).catch(showVoiceError), 300);
