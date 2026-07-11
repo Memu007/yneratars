@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -102,6 +103,15 @@ def resolve_browser_model(mission: dict, settings: dict) -> str:
 
 def _mission_event(db: Database, mission_id: str, kind: str, detail: str) -> None:
     db.add_event(mission_id, kind, detail)
+    # Touch the mission so the existing dashboard signature notices progress events.
+    try:
+        conn = db.connect()
+        try:
+            conn.execute("UPDATE missions SET updated_at=? WHERE id=?", (time.time(), mission_id))
+        finally:
+            conn.close()
+    except Exception:
+        pass
     print(f"TARS_PROGRESS={kind}:{detail}", flush=True)
 
 
