@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07090d">
+  <title>TARS Local · Mission Control</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" aria-label="Navegación principal">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span>T</span></div>
+        <div class="brand-copy">
+          <strong>TARS</strong>
+          <span>LOCAL COMMAND</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="control" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
+          <span>Control</span>
+        </button>
+        <button class="nav-item" data-view="missions" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg>
+          <span>Misiones</span><span id="navMissionBadge" class="nav-badge">0</span>
+        </button>
+        <button class="nav-item" data-view="agents" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M7 8h10l2 3v8H5v-8zM8 13h.01M16 13h.01M9 17h6"/></svg>
+          <span>Agentes</span>
+        </button>
+        <button class="nav-item" data-view="outputs" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5M8 17h8"/></svg>
+          <span>Resultados</span><span id="navOutputBadge" class="nav-badge">0</span>
+        </button>
+        <button class="nav-item" data-view="settings" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 12l2-1 .4-1.2-1-2 2.4-2.4 2 1L11 6h2l1.2.4 2-1 2.4 2.4-1 2L18 11l2 1v3l-2 1-.4 1.2 1 2-2.4 2.4-2-1L13 21h-2l-1.2-.4-2 1-2.4-2.4 1-2L6 16l-2-1z"/></svg>
+          <span>Ajustes</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+      <div class="local-card">
+        <div class="local-card-head"><span id="sidebarDot" class="status-dot"></span><strong>Servidor local</strong></div>
+        <div id="sidebarAddress" class="mono small-text">127.0.0.1:8765</div>
+        <div class="local-meta"><span>Privado</span><span id="sidebarVersion">v0.3.0</span></div>
+      </div>
+      <button id="sidebarCollapse" class="sidebar-collapse" type="button" aria-label="Contraer navegación">‹</button>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-title">
+          <button id="mobileMenu" class="icon-button mobile-only" type="button" aria-label="Abrir menú">☰</button>
+          <div>
+            <div class="eyebrow">MISSION CONTROL / <span id="viewEyebrow">LIVE</span></div>
+            <h1 id="viewTitle">Centro de control</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="system-chip" title="Proveedor activo">
+            <span class="chip-icon">AI</span>
+            <div><small>PROVEEDOR</small><strong id="topProvider">Gemini</strong></div>
+          </div>
+          <div class="system-chip" title="Estado del ejecutor">
+            <span id="executorDot" class="status-dot"></span>
+            <div><small>EJECUTOR</small><strong id="topExecutor">En espera</strong></div>
+          </div>
+          <button id="openMission" class="button button-primary" type="button"><span>＋</span>Nueva misión</button>
+          <button id="stopAll" class="button emergency-button" type="button"><span class="stop-square"></span>DETENER TODO</button>
+        </div>
+      </header>
+
+      <div id="globalBanner" class="global-banner hidden" role="status">
+        <div><strong id="bannerTitle">Configuración pendiente</strong><span id="bannerText"></span></div>
+        <button id="bannerAction" class="button button-small" type="button">Abrir ajustes</button>
+      </div>
+
+      <section id="view-control" class="view active" data-view-panel="control">
+        <div class="metric-grid">
+          <article class="metric-card">
+            <div class="metric-label">SISTEMA</div>
+            <div class="metric-main"><strong id="metricSystem">ONLINE</strong><span id="metricSystemDot" class="status-dot online"></span></div>
+            <div id="metricSystemSub" class="metric-sub">Servidor privado activo</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">MISIÓN ACTIVA</div>
+            <div class="metric-main"><strong id="metricActive">NINGUNA</strong><span class="metric-glyph">↗</span></div>
+            <div id="metricActiveSub" class="metric-sub">Cola preparada</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">APROBACIONES</div>
+            <div class="metric-main"><strong id="metricApprovals">0</strong><span class="metric-glyph warning">!</span></div>
+            <div class="metric-sub">Requieren tu decisión</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">SESIÓN</div>
+            <div class="metric-main"><strong id="metricTokens">—</strong><span class="metric-glyph">◎</span></div>
+            <div id="metricTokensSub" class="metric-sub">Tokens informados</div>
+          </article>
+        </div>
+
+        <div class="control-grid">
+          <section class="console-panel panel-surface">
+            <div class="panel-heading console-heading">
+              <div>
+                <span class="section-kicker">COMMAND LINK</span>
+                <h2>Consola TARS</h2>
+              </div>
+              <div class="console-tools">
+                <button id="newConversation" class="ghost-button" type="button">Nueva conversación</button>
+                <button id="screenShare" class="ghost-button" type="button">Compartir pantalla</button>
+                <span id="tarsStateBadge" class="state-badge online">ONLINE</span>
+              </div>
+            </div>
+
+            <div class="tars-stage" aria-label="Estado visual de TARS">
+              <div class="stage-grid"></div>
+              <div class="scan-line"></div>
+              <div id="tarsVisual" class="tars-visual online">
+                <div class="orbit orbit-a"></div>
+                <div class="orbit orbit-b"></div>
+                <div class="tars-frame">
+                  <div class="tars-sensor"><span></span><span></span><span></span></div>
+                  <div class="tars-letter">T</div>
+                  <div class="tars-bars"><i></i><i></i><i></i><i></i></div>
+                </div>
+              </div>
+              <div class="stage-readout left-readout"><span>LATENCY</span><strong id="latencyValue">LOCAL</strong></div>
+              <div class="stage-readout right-readout"><span>HUMOR</span><strong id="stageHumor">70%</strong></div>
+              <div class="stage-caption"><strong id="stageTitle">TARS operativo</strong><span id="stageSubtitle">Esperando una misión.</span></div>
+            </div>
+
+            <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Conversación">
+              <article class="message assistant system-intro">
+                <div class="message-avatar">T</div>
+                <div class="message-body"><div class="message-meta"><strong>TARS</strong><time>ahora</time></div><p>Sistema operativo. Podés conversar conmigo o empezar una orden con <b>CASE:</b> para la web y <b>KIPP:</b> para trabajo técnico.</p></div>
+              </article>
+            </div>
+
+            <div class="quick-commands" aria-label="Órdenes rápidas">
+              <button type="button" data-command="CASE: abrí wikipedia.org y decime el título de la página principal, sin iniciar sesión ni enviar formularios">CASE · Probar navegación</button>
+              <button type="button" data-command="KIPP: analizá el proyecto actual y proponé el siguiente cambio más importante">KIPP · Revisar proyecto</button>
+              <button type="button" data-command="Dame un resumen del estado actual del sistema y los pendientes">TARS · Estado del sistema</button>
+            </div>
+
+            <form id="chatForm" class="composer">
+              <button id="micButton" class="composer-icon" type="button" aria-label="Hablar" title="Hablar">🎙</button>
+              <textarea id="chatInput" rows="1" placeholder="Dale una orden a TARS…" required></textarea>
+              <div class="composer-actions">
+                <span id="composerProvider" class="composer-model">GEMINI</span>
+                <button type="submit" class="send-button" aria-label="Enviar mensaje">↗</button>
+              </div>
+            </form>
+            <div class="composer-footer">
+              <span id="voiceStatus">Micrófono listo</span>
+              <span>Enter para enviar · Shift+Enter para salto de línea</span>
+            </div>
+          </section>
+
+          <aside class="control-rail">
+            <section class="panel-surface compact-panel">
+              <div class="panel-heading"><div><span class="section-kicker">CREW</span><h2>Agentes</h2></div><button class="text-button" data-go-view="agents" type="button">Ver todos</button></div>
+              <div id="agentRoster" class="agent-roster">
+                <article class="agent-row" data-agent="TARS"><div class="agent-avatar tars">T</div><div class="agent-copy"><strong>TARS</strong><span>Comandante</span></div><span class="agent-state online">ONLINE</span></article>
+                <article class="agent-row" data-agent="CASE"><div class="agent-avatar case">C</div><div class="agent-copy"><strong>CASE</strong><span>Operador web</span></div><span class="agent-state standby">STANDBY</span></article>
+                <article class="agent-row" data-agent="KIPP"><div class="agent-avatar kipp">K</div><div class="agent-copy"><strong>KIPP</strong><span>Programador</span></div><span class="agent-state standby">STANDBY</span></article>
+              </div>
+            </section>
+
+            <section class="panel-surface compact-panel approvals-panel">
+              <div class="panel-heading"><div><span class="section-kicker">HUMAN IN THE LOOP</span><h2>Aprobaciones</h2></div><span id="approvalCount" class="counter-badge">0</span></div>
+              <div id="approvalList" class="approval-list empty-state-small">No hay acciones pendientes.</div>
+            </section>
+
+            <section class="panel-surface compact-panel activity-panel">
+              <div class="panel-heading"><div><span class="section-kicker">LIVE FEED</span><h2>Actividad</h2></div><span class="live-label"><i></i>LIVE</span></div>
+              <div id="activityFeed" class="activity-feed empty-state-small">Todavía no hay actividad.</div>
+            </section>
+          </aside>
+        </div>
+
+        <section class="panel-surface mission-preview-panel">
+          <div class="panel-heading">
+            <div><span class="section-kicker">JOB BOARD</span><h2>Misiones recientes</h2></div>
+            <div class="heading-actions"><div id="queueSummary" class="queue-summary">0 en cola</div><button class="text-button" data-go-view="missions" type="button">Abrir tablero completo</button></div>
+          </div>
+          <div id="missionPreview" class="mission-table compact-table"></div>
+        </section>
+      </section>
+
+      <section id="view-missions" class="view" data-view-panel="missions">
+        <div class="page-header">
+          <div><span class="section-kicker">OPERATIONS</span><h2>Tablero de misiones</h2><p>Una ejecución activa por vez, con permisos explícitos para acciones sensibles.</p></div>
+          <button class="button button-primary" data-open-mission type="button">＋ Crear misión</button>
+        </div>
+        <div class="toolbar panel-surface">
+          <div id="missionFilters" class="filter-tabs">
+            <button class="active" data-filter="all" type="button">Todas <span id="filterAll">0</span></button>
+            <button data-filter="active" type="button">Activas <span id="filterActive">0</span></button>
+            <button data-filter="awaiting_approval" type="button">Aprobación <span id="filterApproval">0</span></button>
+            <button data-filter="completed" type="button">Completadas <span id="filterCompleted">0</span></button>
+            <button data-filter="failed" type="button">Con problemas <span id="filterFailed">0</span></button>
+          </div>
+          <div class="search-wrap"><span>⌕</span><input id="missionSearch" type="search" placeholder="Buscar misión, agente o modelo"></div>
+        </div>
+        <div id="missionBoard" class="mission-board"></div>
+      </section>
+
+      <section id="view-agents" class="view" data-view-panel="agents">
+        <div class="page-header"><div><span class="section-kicker">AUTONOMOUS CREW</span><h2>Agentes y capacidades</h2><p>Cada agente opera con un alcance distinto y reglas de seguridad separadas.</p></div></div>
+        <div class="agent-detail-grid">
+          <article class="agent-detail-card panel-surface featured-agent">
+            <div class="agent-detail-top"><div class="agent-hero-avatar tars">T</div><span id="agentTarsStatus" class="state-badge online">ONLINE</span></div>
+            <span class="section-kicker">COMMANDER</span><h3>TARS</h3><p>Conversación, análisis, coordinación y despacho de misiones. Nunca afirma una acción que no fue ejecutada.</p>
+            <div class="capability-list"><span>Chat Gemini/OpenAI</span><span>Memoria de sesión</span><span>Control de humor</span><span>Despacho CASE/KIPP</span></div>
+            <div class="agent-detail-footer"><span>Modelo</span><strong id="agentTarsModel">—</strong></div>
+          </article>
+          <article class="agent-detail-card panel-surface">
+            <div class="agent-detail-top"><div class="agent-hero-avatar case">C</div><span id="agentCaseStatus" class="state-badge standby">STANDBY</span></div>
+            <span class="section-kicker">WEB OPERATOR</span><h3>CASE</h3><p>Navega sitios mediante Browser Use. En riesgo bajo opera en modo lectura y no puede completar acciones sensibles.</p>
+            <div class="capability-list"><span>Navegación web</span><span>Extracción de contenido</span><span>Capturas</span><span>Dominios permitidos</span></div>
+            <div class="agent-detail-footer"><span>Browser Use</span><strong id="agentCaseIntegration">Comprobando…</strong></div>
+          </article>
+          <article class="agent-detail-card panel-surface">
+            <div class="agent-detail-top"><div class="agent-hero-avatar kipp">K</div><span id="agentKippStatus" class="state-badge standby">STANDBY</span></div>
+            <span class="section-kicker">ENGINEERING</span><h3>KIPP</h3><p>Analiza código y produce soluciones técnicas. La edición automática de repositorios permanece desactivada en esta versión.</p>
+            <div class="capability-list"><span>Análisis técnico</span><span>Propuestas verificables</span><span>Informes</span><span>Sin escritura automática</span></div>
+            <div class="agent-detail-footer"><span>Modo</span><strong>ANÁLISIS SEGURO</strong></div>
+          </article>
+        </div>
+        <section class="panel-surface integrations-section">
+          <div class="panel-heading"><div><span class="section-kicker">TOOLS</span><h2>Integraciones</h2></div></div>
+          <div class="integration-grid">
+            <article class="integration-card"><div class="integration-icon">BU</div><div><strong>Browser Use</strong><span>Navegación y operación web</span></div><span id="browserUseState" class="integration-state">—</span></article>
+            <article class="integration-card"><div class="integration-icon">UI</div><div><strong>UI-TARS Desktop</strong><span>Control visual del escritorio</span></div><span id="uiTarsState" class="integration-state">—</span></article>
+            <article class="integration-card"><div class="integration-icon">VO</div><div><strong>Voz local</strong><span>Web Speech + voces del sistema</span></div><span id="voiceIntegrationState" class="integration-state">—</span></article>
+            <article class="integration-card"><div class="integration-icon">KC</div><div><strong>Keychain</strong><span>Almacenamiento de credenciales</span></div><span id="keychainState" class="integration-state">—</span></article>
+          </div>
+        </section>
+      </section>
+
+      <section id="view-outputs" class="view" data-view-panel="outputs">
+        <div class="page-header"><div><span class="section-kicker">DELIVERABLES</span><h2>Resultados e informes</h2><p>Salidas terminadas por TARS, CASE y KIPP. Las aplicaciones ejecutables se habilitarán cuando KIPP tenga workspace aislado.</p></div></div>
+        <div class="output-stats">
+          <div class="output-stat panel-surface"><span>Completados</span><strong id="outputCompleted">0</strong></div>
+          <div class="output-stat panel-surface"><span>Con errores</span><strong id="outputFailed">0</strong></div>
+          <div class="output-stat panel-surface"><span>Apps disponibles</span><strong id="outputApps">0</strong><small>Próxima fase</small></div>
+        </div>
+        <div id="outputGrid" class="output-grid"></div>
+      </section>
+
+      <section id="view-settings" class="view" data-view-panel="settings">
+        <div class="page-header"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h2>Ajustes</h2><p>Las claves permanecen en tu Mac y nunca vuelven a mostrarse en el navegador.</p></div><button id="saveAllSettings" class="button button-primary" type="button">Guardar cambios</button></div>
+        <div class="settings-layout">
+          <section class="settings-card panel-surface">
+            <div class="settings-card-head"><div class="settings-icon">AI</div><div><h3>Proveedor y modelos</h3><p>Cerebro principal y modelo del operador web.</p></div></div>
+            <div class="settings-grid">
+              <label>Proveedor activo<select id="provider"><option value="google">Google Gemini</option><option value="openai">OpenAI</option></select></label>
+              <label>Modelo de conversación<input id="chatModel" placeholder="Modelo disponible en tu cuenta"></label>
+              <label>Modelo de CASE<input id="browserModel" placeholder="Modelo multimodal recomendado"></label>
+              <label>Máximo de pasos<input id="browserMaxSteps" type="number" min="1" max="100" value="18"></label>
+            </div>
+            <div class="secret-block">
+              <div class="secret-status"><span id="providerKeyDot" class="status-dot"></span><div><strong id="providerKeyTitle">API key</strong><small id="providerKeyText">No configurada</small></div></div>
+              <div class="secret-input"><input id="apiKey" type="password" autocomplete="off" placeholder="Pegá una clave nueva"><button id="saveKey" class="button" type="button">Guardar</button><button id="deleteKey" class="button button-danger-quiet" type="button">Borrar</button></div>
+            </div>
+            <div class="settings-actions"><button id="testProvider" class="button" type="button">Probar conexión</button><button id="loadModels" class="button" type="button">Consultar modelos</button><span id="settingsStatus" class="inline-status"></span></div>
+            <div id="modelsBox" class="model-picker hidden"></div>
+          </section>
+
+          <section class="settings-card panel-surface">
+            <div class="settings-card-head"><div class="settings-icon">VO</div><div><h3>Voz y conversación</h3><p>Entrada por micrófono y salida con voces instaladas.</p></div></div>
+            <div class="settings-grid">
+              <label>Voz<select id="voiceSelect"><option>Voz predeterminada</option></select></label>
+              <label>Velocidad<div class="range-field"><input id="voiceRate" type="range" min="0.7" max="1.4" step="0.05" value="0.95"><output id="voiceRateValue">0.95×</output></div></label>
+              <label class="switch-line"><span>Leer respuestas</span><input id="autoSpeak" type="checkbox" checked><i></i></label>
+              <label class="switch-line"><span>Enviar al terminar de hablar</span><input id="handsFree" type="checkbox"><i></i></label>
+            </div>
+            <button id="testVoice" class="button" type="button">Probar voz</button>
+          </section>
+
+          <section class="settings-card panel-surface">
+            <div class="settings-card-head"><div class="settings-icon">PS</div><div><h3>Personalidad</h3><p>Comportamiento de TARS sin modificar las reglas de seguridad.</p></div></div>
+            <label class="full-label">Humor <span id="humorValue">70%</span><input id="humor" type="range" min="0" max="100" value="70"></label>
+            <label class="full-label">Instrucción base<textarea id="personality" rows="5"></textarea></label>
+          </section>
+
+          <section class="settings-card panel-surface">
+            <div class="settings-card-head"><div class="settings-icon">OP</div><div><h3>Operación y seguridad</h3><p>Control de cola, navegador y alcance permitido.</p></div></div>
+            <label class="switch-line"><span>Ejecutar cola automáticamente</span><input id="autoExecute" type="checkbox" checked><i></i></label>
+            <label class="switch-line"><span>Habilitar CASE</span><input id="browserEnabled" type="checkbox" checked><i></i></label>
+            <label class="full-label">Dominios permitidos<input id="allowedDomains" placeholder="Vacío = cualquier dominio público"></label>
+            <div class="security-note"><strong>Bloqueo permanente</strong><span>Pagos, compras, transferencias, contraseñas, campañas publicitarias y desactivación de seguridad.</span></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="missionDialog" class="modal mission-modal">
+    <form id="missionForm" method="dialog">
+      <div class="modal-head"><div><span class="section-kicker">NEW OPERATION</span><h2>Nueva misión</h2></div><button class="icon-button close-dialog" type="button" aria-label="Cerrar">×</button></div>
+      <div class="modal-body">
+        <label>Título<input id="missionTitle" maxlength="160" placeholder="Ej.: Revisar la página del proyecto" required></label>
+        <label>Objetivo<textarea id="missionDescription" rows="6" maxlength="12000" placeholder="Describí el resultado esperado, restricciones y cuándo debe detenerse." required></textarea></label>
+        <div class="form-columns">
+          <label>Agente<select id="worker"><option value="CASE">CASE · navegador</option><option value="TARS">TARS · análisis</option><option value="KIPP">KIPP · programación</option></select></label>
+          <label>Riesgo declarado<select id="risk"><option value="low">Bajo · automático</option><option value="medium">Medio · requiere aprobación</option><option value="high">Alto · requiere aprobación</option></select></label>
+        </div>
+        <div class="risk-explainer"><span class="shield-icon">◇</span><div><strong>La evaluación automática puede elevar el riesgo.</strong><p>Una orden sensible nunca se vuelve automática porque elijas “bajo”.</p></div></div>
+      </div>
+      <div class="modal-actions"><button class="button close-dialog" type="button">Cancelar</button><button id="createMissionButton" class="button button-primary" type="submit">Despachar misión</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="detailDialog" class="modal detail-modal">
+    <div class="modal-head"><div><span id="detailWorker" class="section-kicker">MISSION</span><h2 id="detailTitle">Detalle</h2></div><button class="icon-button close-detail" type="button" aria-label="Cerrar">×</button></div>
+    <div id="detailBody" class="modal-body"></div>
+    <div class="modal-actions"><button class="button close-detail" type="button">Cerrar</button></div>
+  </dialog>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+
+  <template id="messageTemplate">
+    <article class="message"><div class="message-avatar"></div><div class="message-body"><div class="message-meta"><strong></strong><time></time></div><p></p></div></article>
+  </template>
+  <template id="activityTemplate">
+    <article class="activity-item"><span class="activity-dot"></span><div><strong></strong><p></p><time></time></div></article>
+  </template>
+  <template id="missionRowTemplate">
+    <article class="mission-row"><div class="mission-agent"></div><div class="mission-main"><div class="mission-title-line"><strong></strong><span class="status-pill"></span></div><p></p><div class="mission-meta"></div></div><div class="mission-progress"><div><i></i></div><span></span></div><div class="mission-actions"></div></article>
+  </template>
+  <template id="outputTemplate">
+    <article class="output-card panel-surface"><div class="output-head"><div class="output-agent"></div><span class="status-pill"></span></div><h3></h3><p></p><div class="output-meta"></div><button class="button output-open" type="button">Ver resultado</button></article>
+  </template>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

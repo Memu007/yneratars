@@ -1,0 +1,33 @@
+TARS LOCAL 0.3.0 — PRIMERA PRUEBA EN MAC
+
+1. Descomprimí el ZIP completo.
+2. Hacé doble clic en ABRIR_TARS.command.
+3. La primera ejecución instala el entorno, Browser Use y Chromium.
+4. Se abrirá http://127.0.0.1:8765
+
+CONFIGURACIÓN
+
+5. Abrí Ajustes.
+6. Elegí Google Gemini u OpenAI.
+7. Pegá tu API key y pulsá Guardar.
+8. Pulsá Probar conexión.
+9. Consultá los modelos y seleccioná uno habilitado.
+10. Guardá los cambios.
+11. Probá la voz.
+
+PRIMERA MISIÓN SEGURA
+
+CASE: abrí wikipedia.org y decime el título de la página principal, sin iniciar sesión ni enviar formularios
+
+SEGURIDAD
+
+- Para detener todo, pulsá DETENER TODO.
+- No pegues API keys en chats ni documentos.
+- Cargalas únicamente en Ajustes.
+- UI-TARS es opcional y todavía no controla el escritorio desde el tablero.
+- Pagos, compras, transferencias, contraseñas y campañas están bloqueados.
+
+SI MACOS BLOQUEA EL ARCHIVO
+
+chmod +x ABRIR_TARS.command scripts/*.command scripts/*.sh
+./ABRIR_TARS.command

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tars-local"
+version = "0.3.0"
+description = "Asistente táctico local con voz, proveedores intercambiables y operador web seguro"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "TARS Local"}]
+dependencies = []
+
+[project.optional-dependencies]
+browser = ["browser-use==0.13.3"]
+
+[project.scripts]
+tars-local = "app.server:serve"
+
+[tool.setuptools]
+packages = ["app"]

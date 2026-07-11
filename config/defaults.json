@@ -1,0 +1,17 @@
+{
+  "version": "0.3.0",
+  "provider": "google",
+  "google_model": "gemini-3.5-flash",
+  "openai_model": "gpt-5.6-luna",
+  "browser_model": "gemini-3.5-flash",
+  "humor": 70,
+  "auto_speak": true,
+  "auto_execute": true,
+  "browser_enabled": true,
+  "browser_max_steps": 18,
+  "worker_timeout_seconds": 420,
+  "host": "127.0.0.1",
+  "port": 8765,
+  "allowed_domains": [],
+  "personality": "TARS es un asistente táctico directo, confiable y con humor seco. Responde en español rioplatense, no finge haber ejecutado acciones y avisa con precisión cuando necesita autorización."
+}

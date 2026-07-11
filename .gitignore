@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+config/settings.json
+config/.secrets.json
+data/*.db
+data/*.db-*
+data/browser-profile/
+logs/*.log
+.DS_Store
